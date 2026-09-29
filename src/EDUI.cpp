@@ -561,7 +561,7 @@ namespace EDUI {
 		
 		// Degrade Slider
 		TableSetColumnIndex(1); 
-		if (SliderInt(idd.c_str(), &degradeValue, 0, 200, "%d%%"))
+		if (SliderInt(idd.c_str(), &degradeValue, 0, Degredation::kMaxDegradationRate, "%d%%"))
 			changeSlider = true;
 
 		// Break Slider
