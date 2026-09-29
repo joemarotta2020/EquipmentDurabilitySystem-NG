@@ -38,6 +38,17 @@ jobs:
           xmake --version
           git submodule status --recursive
 
+      - name: Force CommonLibSSE-NG source build
+        shell: pwsh
+        run: |
+          # CommonLib's CI auto-fetches a prebuilt library baked for SE+AE+VR.
+          # Our plugin is intentionally SE-only, so make the submodule dirty in
+          # a documentation-only file. CommonLib then follows its documented
+          # safe fallback and builds from source with our runtime configuration.
+          Add-Content -Path lib/commonlibsse-ng/PREBUILT.md -Value ""
+          Add-Content -Path lib/commonlibsse-ng/PREBUILT.md -Value "<!-- EDS CI: force SE-only CommonLib source build -->"
+          git -C lib/commonlibsse-ng status --short
+
       - name: Configure Skyrim SE release
         shell: pwsh
         run: |
