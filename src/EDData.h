@@ -17,6 +17,7 @@ namespace Degredation
     constexpr double kMaxLossAt100 = 0.0040;
     constexpr double kCurve = 1.5;
     constexpr double kPrecision = 10000.0;
+    constexpr int kMaxDegradationRate = 1700;
 
     // Round the float value to the nearest tenth
     inline float CeilToTenths(float value)
