@@ -1,0 +1,87 @@
+name: Build Skyrim SE
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-se:
+    name: Skyrim SE 1.5.97
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout source and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up MSVC x64
+        uses: TheMrMilchmann/setup-msvc-dev@v4.0.0
+        with:
+          arch: x64
+
+      - name: Set up XMake 3.0.1
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: '3.0.1'
+
+      - name: Show toolchain versions
+        shell: pwsh
+        run: |
+          cl
+          xmake --version
+          git submodule status --recursive
+
+      - name: Configure Skyrim SE release
+        shell: pwsh
+        run: |
+          xmake f -p windows -a x64 -m release --skyrim_se=y --skyrim_ae=n --skyrim_vr=n -y
+
+      - name: Build Skyrim SE release
+        shell: pwsh
+        run: |
+          xmake -vD EquipmentDurabilitySystem-NG
+
+      - name: Stage build artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+
+          $dll = Get-ChildItem -Path . -Recurse -File -Filter 'EquipmentDurabilitySystem-NG.dll' |
+            Where-Object { $_.FullName -notmatch '\\artifact\\' } |
+            Select-Object -First 1
+
+          if (-not $dll) {
+            throw 'EquipmentDurabilitySystem-NG.dll was not produced.'
+          }
+
+          Copy-Item $dll.FullName artifact\EquipmentDurabilitySystem-NG.dll
+
+          $pdb = Get-ChildItem -Path . -Recurse -File -Filter 'EquipmentDurabilitySystem-NG.pdb' |
+            Where-Object { $_.FullName -notmatch '\\artifact\\' } |
+            Select-Object -First 1
+
+          if ($pdb) {
+            Copy-Item $pdb.FullName artifact\EquipmentDurabilitySystem-NG.pdb
+          }
+
+          "Source commit: $env:GITHUB_SHA" | Set-Content artifact\BUILD_INFO.txt
+          "Target: Skyrim Special Edition (SE / 1.5.97)" | Add-Content artifact\BUILD_INFO.txt
+          "XMake: 3.0.1" | Add-Content artifact\BUILD_INFO.txt
+
+          Get-ChildItem artifact
+
+      - name: Upload Skyrim SE build
+        uses: actions/upload-artifact@v4
+        with:
+          name: EquipmentDurabilitySystem-NG-SE
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 30
