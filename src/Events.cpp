@@ -352,7 +352,7 @@ static void TemperDecay(FoundEquipData* eqD, RE::Actor* actor, bool powerAttack)
 	if (degrade_rate == 0) return;
 
 	// Determine the health rate based on the defined curve
-	double rate = std::clamp(degrade_rate, 0.0, 200.0);
+	double rate = std::clamp(degrade_rate, 0.0, static_cast<double>(Degredation::kMaxDegradationRate));
 	double scale = std::pow(rate / 100.0, Degredation::kCurve);
 	double loss = Random::Double(Degredation::kMinLossAt100, Degredation::kMaxLossAt100) * scale;
 
@@ -412,11 +412,6 @@ static bool IsValidHitSource(RE::TESForm* form) {
     return false;
 }
 
-static void ShuffleSlots(std::array<RE::BGSBipedObjectForm::BipedObjectSlot, 4>& slots) {
-	thread_local std::mt19937 mt{ std::random_device{}() };
-	std::shuffle(slots.begin(), slots.end(), mt);
-}
-
 static void DecayBlockingEquipment(RE::Actor* actor, RE::InventoryChanges* changes, bool powerAttack) {
 	FoundEquipData shield = FindEquippedArmor(changes, RE::BGSBipedObjectForm::BipedObjectSlot::kShield);
 	if (shield.baseForm) {
@@ -448,31 +443,47 @@ static void DecayBlockingEquipment(RE::Actor* actor, RE::InventoryChanges* chang
 	}
 }
 
-static void DecayRandomArmorPiece(RE::Actor* actor, RE::InventoryChanges* changes, bool powerAttack) {
-	std::array<RE::BGSBipedObjectForm::BipedObjectSlot, 4> slots = {
-		RE::BGSBipedObjectForm::BipedObjectSlot::kHead,
-		RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
-		RE::BGSBipedObjectForm::BipedObjectSlot::kHands,
-		RE::BGSBipedObjectForm::BipedObjectSlot::kFeet
+static void DecayWeightedArmorPiece(RE::Actor* actor, RE::InventoryChanges* changes, bool powerAttack) {
+	// JM Pass 1: weighted body-region targeting. Empty regions are omitted from
+	// the total, so the configured weights automatically renormalize across the
+	// armor/clothing that is actually equipped.
+	constexpr int kBodyWeight = 50;
+	constexpr int kHeadWeight = 15;
+	constexpr int kHandsWeight = 15;
+	constexpr int kFeetWeight = 20;
+
+	FoundEquipData body = FindEquippedArmor(changes, RE::BGSBipedObjectForm::BipedObjectSlot::kBody);
+
+	FoundEquipData head = FindEquippedArmor(changes, RE::BGSBipedObjectForm::BipedObjectSlot::kHead);
+	if (!head.baseForm)
+		head = FindEquippedArmor(changes, RE::BGSBipedObjectForm::BipedObjectSlot::kHair);
+
+	FoundEquipData hands = FindEquippedArmor(changes, RE::BGSBipedObjectForm::BipedObjectSlot::kHands);
+	FoundEquipData feet = FindEquippedArmor(changes, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet);
+
+	int totalWeight = 0;
+	if (body.baseForm) totalWeight += kBodyWeight;
+	if (head.baseForm) totalWeight += kHeadWeight;
+	if (hands.baseForm) totalWeight += kHandsWeight;
+	if (feet.baseForm) totalWeight += kFeetWeight;
+	if (totalWeight <= 0) return;
+
+	int roll = Random::Int(1, totalWeight);
+
+	auto select = [&](FoundEquipData& armor, int weight) {
+		if (!armor.baseForm) return false;
+		if (roll <= weight) {
+			TemperDecay(&armor, actor, powerAttack);
+			return true;
+		}
+		roll -= weight;
+		return false;
 	};
 
-	ShuffleSlots(slots);
-
-	for (auto slot : slots) {
-		FoundEquipData armor = FindEquippedArmor(changes, slot);
-		if (armor.baseForm) {
-			TemperDecay(&armor, actor, powerAttack);
-			return;
-		}
-
-		if (slot != RE::BGSBipedObjectForm::BipedObjectSlot::kHead) continue;
-
-		armor = FindEquippedArmor(changes, RE::BGSBipedObjectForm::BipedObjectSlot::kHair);
-		if (armor.baseForm) {
-			TemperDecay(&armor, actor, powerAttack);
-			return;
-		}
-	}
+	if (select(body, kBodyWeight)) return;
+	if (select(head, kHeadWeight)) return;
+	if (select(hands, kHandsWeight)) return;
+	select(feet, kFeetWeight);
 }
 
 static void ProcessDefenderHit(const RE::TESHitEvent* event, bool powerAttack) {
@@ -492,7 +503,7 @@ static void ProcessDefenderHit(const RE::TESHitEvent* event, bool powerAttack) {
 		return;
 	}
 
-	DecayRandomArmorPiece(actor, changes, powerAttack);
+	DecayWeightedArmorPiece(actor, changes, powerAttack);
 }
 
 static void ProcessAttackerHit(const RE::TESHitEvent* event, bool powerAttack) {
