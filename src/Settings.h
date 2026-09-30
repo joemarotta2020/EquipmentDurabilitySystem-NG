@@ -46,7 +46,8 @@ public:
 	int ED_Degrade_Armor{ 25 };
 	int ED_Degrade_PowerAttack{ 50 };
 	int ED_Degrade_FollowerMulti{ 0 };
-	int ED_Degrade_NPCMulti{ 0 };
+	int ED_Degrade_NPCWeaponMulti{ 0 };
+	int ED_Degrade_NPCArmorMulti{ -95 };
 
 	// Break Rates
 	int ED_Break_Sword{ 10 };
@@ -64,7 +65,8 @@ public:
 	int ED_Break_Armor{ 10 };
 	int ED_Break_PowerAttack{ 50 };
 	int ED_Break_FollowerMulti{ 0 };
-	int ED_Break_NPCMulti{ 0 };
+	int ED_Break_NPCWeaponMulti{ 0 };
+	int ED_Break_NPCArmorMulti{ -70 };
 
 	// Material Multiplier
 	int ED_Daedric{ 60 };
