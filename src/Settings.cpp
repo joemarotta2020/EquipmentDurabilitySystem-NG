@@ -41,7 +41,8 @@ void Settings::ForEachINIOption(Settings& settings, Func&& option) {
 	option(settings.ED_Degrade_Armor, "DegradationRate", "DefaultArmor");
 	option(settings.ED_Degrade_PowerAttack, "DegradationRate", "PowerAttackMultiplier");
 	option(settings.ED_Degrade_FollowerMulti, "DegradationRate", "FollowerMultiplier");
-	option(settings.ED_Degrade_NPCMulti, "DegradationRate", "NPCMultiplier");
+	option(settings.ED_Degrade_NPCWeaponMulti, "DegradationRate", "NPCWeaponMultiplier");
+	option(settings.ED_Degrade_NPCArmorMulti, "DegradationRate", "NPCArmorMultiplier");
 
 	// Break Rates
 	option(settings.ED_Break_Sword, "BreakChance", "WeaponSword");
@@ -59,7 +60,8 @@ void Settings::ForEachINIOption(Settings& settings, Func&& option) {
 	option(settings.ED_Break_Armor, "BreakChance", "DefaultArmor");
 	option(settings.ED_Break_PowerAttack, "BreakChance", "PowerAttackMultiplier");
 	option(settings.ED_Break_FollowerMulti, "BreakChance", "FollowerMultiplier");
-	option(settings.ED_Break_NPCMulti, "BreakChance", "NPCMultiplier");
+	option(settings.ED_Break_NPCWeaponMulti, "BreakChance", "NPCWeaponMultiplier");
+	option(settings.ED_Break_NPCArmorMulti, "BreakChance", "NPCArmorMultiplier");
 
 	// Skill Rates
 	option(settings.ED_Skill_Enabled, "SkillMultiplier", "SkillEnabled");
@@ -194,6 +196,11 @@ void Settings::SaveINI() {
 	ForEachINIOption(*this, [this, &iniSettings](const auto& value, const char* section, const char* key) {
 		set_value(iniSettings, value, section, key);
 	});
+
+	// Remove the superseded generic NPC multiplier keys so the saved INI
+	// reflects the split weapon/armor behavior unambiguously.
+	iniSettings.Delete("DegradationRate", "NPCMultiplier");
+	iniSettings.Delete("BreakChance", "NPCMultiplier");
 
 	// Replace whitespaces with underscores before saving
 	std::string Names_Broken = [] (std::string s) { std::replace(s.begin(), s.end(), ' ', '_'); return s; }(ED_Names_Broken);
