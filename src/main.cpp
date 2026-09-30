@@ -29,10 +29,16 @@ static void SKSEMessageHandler(SKSE::MessagingInterface::Message* message)
 		SKSE::GetTaskInterface()->AddTask([] { Utility::GetSingleton()->CacheTemperRecipes(); });
 		break;
 	case SKSE::MessagingInterface::kPostLoadGame:
-		SKSE::GetTaskInterface()->AddTask([]() { Menu::MenuInit(); });
+		SKSE::GetTaskInterface()->AddTask([]() {
+			Menu::MenuInit();
+			Events::ResetPeriodicDegradationClock();
+		});
 		break;
 	case SKSE::MessagingInterface::kNewGame:
-		SKSE::GetTaskInterface()->AddTask([]() { Menu::MenuInit(); });
+		SKSE::GetTaskInterface()->AddTask([]() {
+			Menu::MenuInit();
+			Events::ResetPeriodicDegradationClock();
+		});
 		break;
 	}
 }
