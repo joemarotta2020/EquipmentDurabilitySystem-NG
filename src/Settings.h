@@ -23,6 +23,13 @@ public:
 	bool ED_Material_Multiplier{ true };
 	int ED_BreakThreshold{ 50 };
 
+	// Periodic degradation (displayed durability points per game hour)
+	bool ED_Periodic_Enabled{ true };
+	float ED_Periodic_HeavyArmorPerHour{ 0.05f };
+	float ED_Periodic_LightArmorPerHour{ 0.10f };
+	float ED_Periodic_ClothingPerHour{ 0.20f };
+	float ED_Periodic_DefaultArmorPerHour{ 0.10f };
+
 	// Degredaton Rates
 	int ED_Degrade_Sword{ 25 };
 	int ED_Degrade_Dagger{ 25 };
@@ -155,6 +162,7 @@ public:
 	// Public Functions
 	double GetDegradationRate(RE::TESForm* forms, RE::Actor* a_actor = nullptr);
 	double GetBreakChance(RE::TESForm* form, RE::Actor* a_actor = nullptr);
+	double GetPeriodicWearPoints(RE::TESForm* form);
 
 	static Settings* GetSingleton();
 private:
