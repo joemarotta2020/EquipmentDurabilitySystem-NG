@@ -300,6 +300,11 @@ static void BreakEquipment(FoundEquipData* eqD, RE::Actor* actor) {
 	
 }
 
+static double GetNPCEquipmentMultiplier(RE::TESForm* form, int weaponPercent, int armorPercent) {
+	const int percent = form && form->As<RE::TESObjectWEAP>() ? weaponPercent : armorPercent;
+	return (std::max)(0.0, 1.0 + (percent / 100.0));
+}
+
 static bool TryBreakEquipment(FoundEquipData* eqD, RE::Actor* actor, bool powerAttack, bool combatModifiers) {
 	if (!eqD || !actor || !eqD->baseForm || !eqD->CanBreak()) return false;
 
@@ -325,10 +330,15 @@ static bool TryBreakEquipment(FoundEquipData* eqD, RE::Actor* actor, bool powerA
 	if (combatModifiers && powerAttack)
 		chance *= 1.0 + (setting->ED_Break_PowerAttack / 100.0);
 
-	if (combatModifiers && actor != utility->GetPlayer())
-		chance *= actor->IsPlayerTeammate()
-			? 1.0 + (setting->ED_Break_FollowerMulti / 100.0)
-			: 1.0 + (setting->ED_Break_NPCMulti / 100.0);
+	if (combatModifiers && actor != utility->GetPlayer()) {
+		if (actor->IsPlayerTeammate())
+			chance *= 1.0 + (setting->ED_Break_FollowerMulti / 100.0);
+		else
+			chance *= GetNPCEquipmentMultiplier(
+				eqD->baseForm,
+				setting->ED_Break_NPCWeaponMulti,
+				setting->ED_Break_NPCArmorMulti);
+	}
 
 	if (!Probability::Double(chance))
 		return false;
@@ -391,10 +401,15 @@ static void TemperDecay(FoundEquipData* eqD, RE::Actor* actor, bool powerAttack)
 	if (powerAttack)
 		loss *= 1.0 + (setting->ED_Degrade_PowerAttack / 100.0);
 
-	if (actor != utility->GetPlayer())
-		loss *= actor->IsPlayerTeammate()
-			? 1.0 + (setting->ED_Degrade_FollowerMulti / 100.0)
-			: 1.0 + (setting->ED_Degrade_NPCMulti / 100.0);
+	if (actor != utility->GetPlayer()) {
+		if (actor->IsPlayerTeammate())
+			loss *= 1.0 + (setting->ED_Degrade_FollowerMulti / 100.0);
+		else
+			loss *= GetNPCEquipmentMultiplier(
+				eqD->baseForm,
+				setting->ED_Degrade_NPCWeaponMulti,
+				setting->ED_Degrade_NPCArmorMulti);
+	}
 
 	ApplyDurabilityLoss(eqD, actor, loss, powerAttack, true, true);
 }
