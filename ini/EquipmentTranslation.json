@@ -35,8 +35,9 @@
 	"Degradation.Clothing": "Clothing",
 	"Degradation.OtherArmor": "Other Armor",
 	"Degradation.PowerMulti": "Power Attack Multipler",
-	"Degradation.FollowerMulti": "Follower Multipler",
-	"Degradation.NPCMulti": "NPC Multipler",
+	"Degradation.FollowerMulti": "Follower Multiplier",
+	"Degradation.NPCWeaponMulti": "NPC Weapon Multiplier",
+	"Degradation.NPCArmorMulti": "NPC Armor/Clothing Multiplier",
 	
 	"Mitigation": "Mitigation",
 	"Mitigation.Skill": "Skill Mitigation",
