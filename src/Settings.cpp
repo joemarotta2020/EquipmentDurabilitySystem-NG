@@ -18,6 +18,13 @@ void Settings::ForEachINIOption(Settings& settings, Func&& option) {
 	option(settings.ED_Material_Multiplier, "Degradation", "MaterialMultiplier");
 	option(settings.ED_BreakThreshold, "Degradation", "BreakThreshold");
 
+	// Periodic degradation
+	option(settings.ED_Periodic_Enabled, "PeriodicDegradation", "Enabled");
+	option(settings.ED_Periodic_HeavyArmorPerHour, "PeriodicDegradation", "HeavyArmorPerHour");
+	option(settings.ED_Periodic_LightArmorPerHour, "PeriodicDegradation", "LightArmorPerHour");
+	option(settings.ED_Periodic_ClothingPerHour, "PeriodicDegradation", "ClothingPerHour");
+	option(settings.ED_Periodic_DefaultArmorPerHour, "PeriodicDegradation", "DefaultArmorPerHour");
+
 	// Degradation Rates
 	option(settings.ED_Degrade_Sword, "DegradationRate", "WeaponSword");
 	option(settings.ED_Degrade_Dagger, "DegradationRate", "WeaponDagger");
@@ -440,6 +447,25 @@ double Settings::GetDegradationRate(RE::TESForm* form, RE::Actor* a_actor) {
 	}
 
 	return ED_Degrade_Armor;
+}
+
+double Settings::GetPeriodicWearPoints(RE::TESForm* form) {
+	if (!form) return 0.0;
+
+	auto* armor = form->As<RE::TESObjectARMO>();
+	if (!armor) return 0.0;
+
+	const double matMulti = MaterialRate(armor->GetKeywords());
+	const auto nonNegative = [](float value) { return (std::max)(0.0f, value); };
+
+	if (armor->IsLightArmor())
+		return nonNegative(ED_Periodic_LightArmorPerHour) * matMulti;
+	if (armor->IsHeavyArmor())
+		return nonNegative(ED_Periodic_HeavyArmorPerHour) * matMulti;
+	if (armor->HasKeyword(Utility::GetSingleton()->keywordClothing))
+		return nonNegative(ED_Periodic_ClothingPerHour) * matMulti;
+
+	return nonNegative(ED_Periodic_DefaultArmorPerHour) * matMulti;
 }
 
 double Settings::GetBreakChance(RE::TESForm* form, RE::Actor* a_actor) {
