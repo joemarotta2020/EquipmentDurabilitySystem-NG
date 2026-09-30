@@ -114,7 +114,9 @@ namespace EDUI {
 					changeRateOption = true;
 				if (MultiplierEntry(Translate("Degradation.FollowerMulti"), Settings->ED_Degrade_FollowerMulti, Settings->ED_Break_FollowerMulti))
 					changeRateOption = true;
-				if (MultiplierEntry(Translate("Degradation.NPCMulti"), Settings->ED_Degrade_NPCMulti, Settings->ED_Break_NPCMulti))
+				if (SignedMultiplierEntry(Translate("Degradation.NPCWeaponMulti"), Settings->ED_Degrade_NPCWeaponMulti, Settings->ED_Break_NPCWeaponMulti))
+					changeRateOption = true;
+				if (SignedMultiplierEntry(Translate("Degradation.NPCArmorMulti"), Settings->ED_Degrade_NPCArmorMulti, Settings->ED_Break_NPCArmorMulti))
 					changeRateOption = true;
 
 				EndTable();
@@ -592,6 +594,29 @@ namespace EDUI {
 		// Break Slider
 		TableSetColumnIndex(2); 
 		if (SliderInt(idb.c_str(), &value2, 0, 200, "%d%%"))
+			changeSlider = true;
+
+		return changeSlider;
+	}
+
+	bool SignedMultiplierEntry(const char* label, int& value1, int& value2) {
+		bool changeSlider = false;
+
+		std::string idd = std::format("##Degrade_{}", label);
+		std::string idb = std::format("##Break_{}", label);
+
+		TableNextRow();
+		TableSetColumnIndex(0);
+		Text(label);
+
+		// -100% cleanly disables this degradation/break contribution while
+		// retaining the shared base category settings.
+		TableSetColumnIndex(1);
+		if (SliderInt(idd.c_str(), &value1, -100, 200, "%d%%"))
+			changeSlider = true;
+
+		TableSetColumnIndex(2);
+		if (SliderInt(idb.c_str(), &value2, -100, 200, "%d%%"))
 			changeSlider = true;
 
 		return changeSlider;
