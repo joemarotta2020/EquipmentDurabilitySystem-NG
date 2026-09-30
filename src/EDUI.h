@@ -26,6 +26,7 @@ namespace EDUI {
     bool MaterialEntry(const char* label, int& value);
     bool DegradeEntry(const char* label, int& degradeValue, int& breakValue);
     bool MultiplierEntry(const char* label, int& value1, int& value2);
+    bool SignedMultiplierEntry(const char* label, int& value1, int& value2);
     void SliderEntryMaterial(float& value, const char* id);
 	bool CreateInputText(const char* label, std::string& str, ImGuiInputTextFlags flags = 0);
     void ShowHeaderText(const char* text);
