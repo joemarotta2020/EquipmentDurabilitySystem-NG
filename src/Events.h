@@ -8,5 +8,6 @@ static REL::Relocation<decltype(EquipObject)> _EquipObject;
 
 namespace Events {
 	void RegisterSerialization();
+	void ResetPeriodicDegradationClock();
 	void Init(void);
 }
