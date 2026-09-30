@@ -152,6 +152,9 @@ namespace {
 	}
 }
 
+static std::int64_t g_lastPeriodicHour = -1;
+static bool g_periodicClockArmed = false;
+
 // =============================================================
 // Player Animations
 // =============================================================
@@ -297,85 +300,179 @@ static void BreakEquipment(FoundEquipData* eqD, RE::Actor* actor) {
 	
 }
 
-static void TemperDecay(FoundEquipData* eqD, RE::Actor* actor, bool powerAttack) {
-	auto utility = Utility::GetSingleton();
-	auto setting = Settings::GetSingleton();
+static bool TryBreakEquipment(FoundEquipData* eqD, RE::Actor* actor, bool powerAttack, bool combatModifiers) {
+	if (!eqD || !actor || !eqD->baseForm || !eqD->CanBreak()) return false;
 
-	// Check for system enabled; The item is not unarmed; If the actor is not throttled
-	// if (setting->ED_DegradationDisabled || !eqD->CanTemper() || !AddActor(actor)) return;
-	if (setting->ED_DegradationDisabled || !eqD->CanTemper()) return;
+	auto* setting = Settings::GetSingleton();
+	auto* utility = Utility::GetSingleton();
+	const float currentHealth = eqD->GetItemHealthPercent();
+	const float breakThreshold = setting->ED_BreakThreshold / 1000.0f;
 
-	// Get current health percent
-	float CurrentHealth = eqD->GetItemHealthPercent();
-	float BreakThreshold = (setting->ED_BreakThreshold / 1000.0f);
-	
-	// --- Break Chance ---
-	if ((CurrentHealth - Degredation::kMinHealth) <= BreakThreshold && eqD->CanBreak()) {
-		auto chance = setting->GetBreakChance(eqD->baseForm, actor);
+	if ((currentHealth - Degredation::kMinHealth) > breakThreshold)
+		return false;
 
-		// Apply modifiers
-		if (chance != 0.0) {
+	// Periodic wear deliberately passes no actor here: material rules still
+	// apply, but combat skill mitigation does not.
+	double chance = setting->GetBreakChance(eqD->baseForm, combatModifiers ? actor : nullptr);
+	if (chance <= 0.0)
+		return false;
 
-			// Increased Durability
-			if (setting->ED_IncreasedDurability && CurrentHealth > Degredation::kMinHealth) {
-				double durabilityChance = 1.0 - ((CurrentHealth - Degredation::kMinHealth) / BreakThreshold);
-				
-				// A negative durability chance means it wont break at all, lets adjust that 
-				if (durabilityChance <= 0)
-					chance *= 0.01;
-				else
-					chance *= durabilityChance;
-			}
-
-			// Power Attack Multiplier
-			if (powerAttack) 
-				chance *= 1.0 + (setting->ED_Break_PowerAttack / 100.0);
-
-			// Follower/NPC Multiplier
-			if (actor != utility->GetPlayer())
-				chance *= actor->IsPlayerTeammate()
-					? 1.0 + (setting->ED_Break_FollowerMulti / 100.0)
-					: 1.0 + (setting->ED_Break_NPCMulti / 100.0);
-
-			// Check to see if we break
-			if (Probability::Double(chance)) {
-				BreakEquipment(eqD, actor);
-				return;
-			}
-		}
+	if (setting->ED_IncreasedDurability && currentHealth > Degredation::kMinHealth && breakThreshold > 0.0f) {
+		double durabilityChance = 1.0 - ((currentHealth - Degredation::kMinHealth) / breakThreshold);
+		chance *= durabilityChance <= 0.0 ? 0.01 : durabilityChance;
 	}
 
-	// --- Degradation ---
-	if (CurrentHealth <= Degredation::kMinHealth) return;
+	if (combatModifiers && powerAttack)
+		chance *= 1.0 + (setting->ED_Break_PowerAttack / 100.0);
 
-	double degrade_rate = setting->GetDegradationRate(eqD->baseForm, actor);
-	if (degrade_rate == 0) return;
+	if (combatModifiers && actor != utility->GetPlayer())
+		chance *= actor->IsPlayerTeammate()
+			? 1.0 + (setting->ED_Break_FollowerMulti / 100.0)
+			: 1.0 + (setting->ED_Break_NPCMulti / 100.0);
 
-	// Determine the health rate based on the defined curve
-	double rate = std::clamp(degrade_rate, 0.0, static_cast<double>(Degredation::kMaxDegradationRate));
+	if (!Probability::Double(chance))
+		return false;
+
+	BreakEquipment(eqD, actor);
+	return true;
+}
+
+static bool ApplyDurabilityLoss(
+	FoundEquipData* eqD,
+	RE::Actor* actor,
+	double loss,
+	bool powerAttack,
+	bool combatModifiers,
+	bool roundHealth)
+{
+	if (!eqD || !actor || loss < 0.0) return false;
+
+	auto* setting = Settings::GetSingleton();
+	if (setting->ED_DegradationDisabled || !eqD->CanTemper())
+		return false;
+
+	float currentHealth = eqD->GetItemHealthPercent();
+
+	if (loss > 0.0 && currentHealth > Degredation::kMinHealth) {
+		currentHealth -= static_cast<float>(loss);
+
+		if (roundHealth)
+			currentHealth = static_cast<float>(
+				std::round(currentHealth * Degredation::kPrecision) / Degredation::kPrecision);
+
+		if (currentHealth < Degredation::kMinHealth)
+			currentHealth = Degredation::kMinHealth;
+
+		eqD->SetItemHealthPercent(currentHealth);
+	}
+
+	// The degradation event that enters the break range now gets the break
+	// roll immediately. This is shared by combat and periodic wear.
+	return TryBreakEquipment(eqD, actor, powerAttack, combatModifiers);
+}
+
+static void TemperDecay(FoundEquipData* eqD, RE::Actor* actor, bool powerAttack) {
+	if (!eqD || !actor || !eqD->baseForm) return;
+
+	auto* utility = Utility::GetSingleton();
+	auto* setting = Settings::GetSingleton();
+	if (setting->ED_DegradationDisabled || !eqD->CanTemper()) return;
+
+	double degradeRate = setting->GetDegradationRate(eqD->baseForm, actor);
+	if (degradeRate <= 0.0) return;
+
+	double rate = std::clamp(
+		degradeRate,
+		0.0,
+		static_cast<double>(Degredation::kMaxDegradationRate));
 	double scale = std::pow(rate / 100.0, Degredation::kCurve);
 	double loss = Random::Double(Degredation::kMinLossAt100, Degredation::kMaxLossAt100) * scale;
 
-	// Power Attack Multiplier
 	if (powerAttack)
 		loss *= 1.0 + (setting->ED_Degrade_PowerAttack / 100.0);
 
-	// Follower/NPC Multiplier
 	if (actor != utility->GetPlayer())
-		loss *= actor->IsPlayerTeammate() 
+		loss *= actor->IsPlayerTeammate()
 			? 1.0 + (setting->ED_Degrade_FollowerMulti / 100.0)
 			: 1.0 + (setting->ED_Degrade_NPCMulti / 100.0);
 
-	// Apply the lost health
-	CurrentHealth -= static_cast<float>(loss);
-	CurrentHealth = static_cast<float>(std::round(CurrentHealth * Degredation::kPrecision) / Degredation::kPrecision);
+	ApplyDurabilityLoss(eqD, actor, loss, powerAttack, true, true);
+}
 
-	// The default health of an item is always one, so it cant go lower
-	if (CurrentHealth < Degredation::kMinHealth)
-		CurrentHealth = Degredation::kMinHealth;
+// =============================================================
+// Periodic Degradation
+// =============================================================
+static void ProcessPeriodicArmorSlot(
+	RE::Actor* player,
+	RE::BGSBipedObjectForm::BipedObjectSlot slot,
+	std::unordered_set<RE::ExtraDataList*>& processed,
+	bool allowHairFallback = false)
+{
+	if (!player) return;
 
-	// Set the new health of the item
-	eqD->SetItemHealthPercent(CurrentHealth);
+	auto* changes = player->GetInventoryChanges();
+	if (!changes) return;
+
+	FoundEquipData armor = FindEquippedArmor(changes, slot);
+	if (!armor.baseForm && allowHairFallback)
+		armor = FindEquippedArmor(changes, RE::BGSBipedObjectForm::BipedObjectSlot::kHair);
+
+	if (!armor.baseForm || !armor.objectData || processed.contains(armor.objectData))
+		return;
+
+	processed.insert(armor.objectData);
+
+	const double wearPoints = Settings::GetSingleton()->GetPeriodicWearPoints(armor.baseForm);
+	if (wearPoints <= 0.0)
+		return;
+
+	// EDS uses 0.100 internal health as 100 displayed durability points.
+	// Preserve sub-tenth-point hourly wear by bypassing combat's 4-decimal rounding.
+	const double internalLoss = wearPoints / 1000.0;
+	ApplyDurabilityLoss(&armor, player, internalLoss, false, false, false);
+}
+
+static void ProcessOnePeriodicHour() {
+	auto* settings = Settings::GetSingleton();
+	auto* player = Utility::GetSingleton()->GetPlayer();
+	if (!player || !settings->ED_AffectPlayer) return;
+
+	std::unordered_set<RE::ExtraDataList*> processed;
+	processed.reserve(4);
+
+	ProcessPeriodicArmorSlot(player, RE::BGSBipedObjectForm::BipedObjectSlot::kBody, processed);
+	ProcessPeriodicArmorSlot(player, RE::BGSBipedObjectForm::BipedObjectSlot::kHead, processed, true);
+	ProcessPeriodicArmorSlot(player, RE::BGSBipedObjectForm::BipedObjectSlot::kHands, processed);
+	ProcessPeriodicArmorSlot(player, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, processed);
+}
+
+static void ProcessPeriodicDegradation() {
+	if (!g_periodicClockArmed) return;
+
+	auto* calendar = RE::Calendar::GetSingleton();
+	if (!calendar) return;
+
+	const auto currentHour = static_cast<std::int64_t>(std::floor(calendar->GetHoursPassed()));
+	if (g_lastPeriodicHour < 0 || currentHour < g_lastPeriodicHour) {
+		g_lastPeriodicHour = currentHour;
+		return;
+	}
+
+	if (currentHour == g_lastPeriodicHour)
+		return;
+
+	auto* settings = Settings::GetSingleton();
+	const auto elapsedHours = currentHour - g_lastPeriodicHour;
+
+	// Always advance the baseline. Disabling periodic wear must not create
+	// retroactive degradation when it is enabled again later.
+	g_lastPeriodicHour = currentHour;
+
+	if (settings->ED_DegradationDisabled || !settings->ED_Periodic_Enabled || !settings->ED_AffectPlayer)
+		return;
+
+	for (std::int64_t i = 0; i < elapsedHours; ++i)
+		ProcessOnePeriodicHour();
 }
 
 // =============================================================
@@ -1007,6 +1104,17 @@ static void EquipObject(RE::ActorEquipManager* a_manager, RE::Actor* a_actor, RE
 	return _EquipObject(a_manager, a_actor, a_object, a_objectEquipParams);
 }
 
+// =============================================================
+// Update Hook
+// =============================================================
+static std::int32_t OnUpdate() {
+	auto* ui = RE::UI::GetSingleton();
+	if (!ui || !ui->GameIsPaused())
+		ProcessPeriodicDegradation();
+
+	return _OnUpdate();
+}
+
 namespace Events {
 	void RegisterSerialization() {
 		auto* serialization = SKSE::GetSerializationInterface();
@@ -1022,8 +1130,21 @@ namespace Events {
 		logger::info("Registered processed-reference serialization");
 	}
 
-	// inline static REL::Relocation<std::uintptr_t> On_Update_Hook{ REL::RelocationID(35565, 36564), REL::Relocate(0x748, 0xC26) };
+	inline static REL::Relocation<std::uintptr_t> On_Update_Hook{ REL::RelocationID(35565, 36564), REL::Relocate(0x748, 0xC26) };
 	inline static REL::Relocation<std::uintptr_t> EquipObject_Hook{ REL::RelocationID(37938, 38894), REL::Relocate(0xE5, 0x170) };
+
+	void ResetPeriodicDegradationClock() {
+		auto* calendar = RE::Calendar::GetSingleton();
+		if (!calendar) {
+			g_lastPeriodicHour = -1;
+			g_periodicClockArmed = false;
+			return;
+		}
+
+		g_lastPeriodicHour = static_cast<std::int64_t>(std::floor(calendar->GetHoursPassed()));
+		g_periodicClockArmed = true;
+		logger::info("Periodic degradation clock initialized at game hour {}", g_lastPeriodicHour);
+	}
 
 	void Init(void) {
 		// Event Overrides
@@ -1034,8 +1155,10 @@ namespace Events {
 		ReferenceAttachEventHandler::Register();
 		PlayerGraphEventHook::Install();
 
-		// OnEquip Hook
+		// Update and OnEquip Hooks
 		auto& trampoline = SKSE::GetTrampoline();
+		_OnUpdate = trampoline.write_call<5>(On_Update_Hook.address(), OnUpdate);
+		logger::info("Hook Installed: On Update");
 		_EquipObject = trampoline.write_call<5>(EquipObject_Hook.address(), EquipObject);
 		logger::info("Hook Installed: On Equip");
 
