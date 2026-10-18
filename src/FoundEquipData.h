@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ArmorClassificationRules.h"
+
 class FoundEquipData {
 	public:
 		RE::TESForm* baseForm;
@@ -49,6 +51,12 @@ class FoundEquipData {
 		EquipmentType GetEquipmentType();
 };
 
+struct ClassifiedArmorData {
+	FoundEquipData equipment;
+	EDArmor::Region region{ EDArmor::Region::Unknown };
+};
+
 // Additional Equipment functions
 FoundEquipData FindEquippedWeapon(RE::InventoryChanges* a_Changes, RE::Actor* a_actor, RE::TESForm* a_Form, bool a_LeftHand);
 FoundEquipData FindEquippedArmor(RE::InventoryChanges* a_Changes, RE::BGSBipedObjectForm::BipedObjectSlot a_SlotMask);
+std::vector<ClassifiedArmorData> FindEquippedArmorByRegion(RE::InventoryChanges* a_Changes);
