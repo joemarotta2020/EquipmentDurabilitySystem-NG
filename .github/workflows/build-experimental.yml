@@ -44,6 +44,10 @@ jobs:
           Add-Content -Path lib/commonlibsse-ng/PREBUILT.md -Value ""
           Add-Content -Path lib/commonlibsse-ng/PREBUILT.md -Value "<!-- EDS experimental CI: force SE-only CommonLib source build -->"
 
+      - name: Apply modular and semantic armor classifier integration
+        shell: pwsh
+        run: python tools/apply_modular_armor_classifier.py
+
       - name: Apply Living Cuirass immunity
         shell: pwsh
         run: python tools/apply_living_cuirass_immunity.py
